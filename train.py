@@ -4,7 +4,7 @@ import tensorflow as tf
 from sklearn.metrics import classification_report
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 
 def pipeline_train(X, y, sess, params):
     dataset = tf.data.Dataset.from_tensor_slices((X, y))
@@ -47,12 +47,13 @@ def forward(x, reuse, is_training, params):
     with tf.variable_scope('model', reuse=reuse):
         x = tf.contrib.layers.embed_sequence(x, params['vocab_size'], params['hidden_dim'])
         x = tf.layers.dropout(x, 0.1, training=is_training)
-        
+        #x = tf.nn.relu(x)
         bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(
             rnn_cell(params), rnn_cell(params), x, dtype=tf.float32)
         x = tf.concat(bi_outputs, -1)
-        
+        #x = tf.nn.relu(x)
         logits = tf.layers.dense(x, params['n_class'])
+        
     return logits
 
 if __name__ == '__main__':
@@ -61,11 +62,11 @@ if __name__ == '__main__':
         'seq_len': 80,
         'batch_size': 128,
         'n_class': 9,
-        'hidden_dim': 64,
+        'hidden_dim': 128,
         'clip_norm': 5.0,
-        'lr': {'start': 1e-1, 'end': 5e-4},
+        'lr': {'start': 1e-1, 'end': 0.9e-3},
         'n_epoch': 4,
-        'display_step': 10,
+        'display_step': 50,
     }
     word_to_ix_path = 'data/word_to_ix.pkl'
     tag_to_ix_path = 'data/tag_to_ix.pkl'
@@ -83,32 +84,35 @@ if __name__ == '__main__':
     X_train, Y_train = np.load(X_train_path), np.load(Y_train_path)
     X_test, Y_test = np.load(X_test_path), np.load(Y_test_path)
 
-    
-    params['lr']['steps'] = len(X_train) // params['batch_size']
-    sess = tf.Session()
+    sess = tf.Session() 
     iter_train, init_dict_train = pipeline_train(X_train, Y_train, sess, params)
     iter_test, init_dict_test = pipeline_test(X_test, sess, params)
 
-
     ops = {}
-
+     
     X_train_batch, y_train_batch = iter_train.get_next()
     X_test_batch = iter_test.get_next()
 
     logits_tr = forward(X_train_batch, False, True, params)
     logits_te = forward(X_test_batch, True, False, params)
-
+    
     log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
         logits_tr, y_train_batch, tf.count_nonzero(X_train_batch, 1))
 
-    ops['loss'] = tf.reduce_mean(-log_likelihood)
 
     ops['global_step'] = tf.Variable(0, trainable=False)
-
+    
+    decay_steps = 100
+    #decay_steps = len(X_train) // params['batch_size']
+    
+    decay_rate = 0.96
+    #decay_rate = params['lr']['end']/params['lr']['start']
+    
     ops['lr'] = tf.train.exponential_decay(
-        params['lr']['start'], ops['global_step'], params['lr']['steps'],
-        params['lr']['end']/params['lr']['start'], staircase=False)
-
+        params['lr']['start'], ops['global_step'], decay_steps,
+        decay_rate, staircase=False)
+    
+    ops['loss'] = tf.reduce_mean(-log_likelihood)
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
         clip_grads(ops['loss'], params), global_step=ops['global_step'])
 
