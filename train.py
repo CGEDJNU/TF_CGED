@@ -25,6 +25,16 @@ def pipeline_test(X, sess, params):
     sess.run(iterator.initializer, init_dict)
     return iterator, init_dict
 
+def pipeline_test_(X, y, sess, params):
+    dataset = tf.data.Dataset.from_tensor_slices((X, y))
+    dataset = dataset.batch(params['batch_size'])
+    iterator = dataset.make_initializable_iterator()
+    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    y_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    init_dict = {X_ph: X, y_ph: y}
+    sess.run(iterator.initializer, init_dict)
+    return iterator, init_dict
+
 def load_word_tag_ix(word_to_ix_path, tag_to_ix_path):
     with open(word_to_ix_path, 'rb') as wordf:
             word_to_ix = pickle.load(wordf)
@@ -32,10 +42,10 @@ def load_word_tag_ix(word_to_ix_path, tag_to_ix_path):
             tag_to_ix = pickle.load(tagf)
     return word_to_ix, tag_to_ix
 
-
 def rnn_cell(params):
     #return tf.nn.rnn_cell.GRUCell(params['hidden_dim'],kernel_initializer=tf.orthogonal_initializer())
     return tf.nn.rnn_cell.BasicLSTMCell(params['hidden_dim'], forget_bias=1.0)
+
 def clip_grads(loss, params):
     variables = tf.trainable_variables()
     grads = tf.gradients(loss, variables)
@@ -85,17 +95,19 @@ if __name__ == '__main__':
     sess = tf.Session() 
     iter_train, init_dict_train = pipeline_train(X_train, Y_train, sess, params)
     iter_test, init_dict_test = pipeline_test(X_test, sess, params)
+    #iter_test, init_dict_test = pipeline_test_(X_test, Y_test, sess, params)
 
     ops = {}
      
     X_train_batch, y_train_batch = iter_train.get_next()
     X_test_batch = iter_test.get_next()
+    #X_test_batch, y_test_batch  = iter_test.get_next()
 
     logits_tr = forward(X_train_batch, False, True, params)
     logits_te = forward(X_test_batch, True, False, params)
+    log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(logits_tr, y_train_batch, tf.count_nonzero(X_train_batch, 1))
     
-    log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
-        logits_tr, y_train_batch, tf.count_nonzero(X_train_batch, 1))
+    #log_likelihood_, trans_params_ = tf.contrib.crf.crf_log_likelihood(logits_te, y_test_batch, tf.count_nonzero(X_test_batch, 1))
 
     ops['global_step'] = tf.Variable(0, trainable=False)
     
@@ -107,9 +119,15 @@ if __name__ == '__main__':
     with tf.name_scope('lr'):    
         ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
         tf.summary.scalar('lr', ops['lr'])
+    
     with tf.name_scope('train_loss'):
         ops['train_loss'] = tf.reduce_mean(-log_likelihood)
         tf.summary.scalar('train_loss', ops['train_loss'])
+    
+   # with tf.name_scope('val_loss'):
+   #     ops['val_loss'] = tf.reduce_mean(-log_likelihood_)
+   #     tf.summary.scalar('val_loss', ops['val_loss'])
+    
     merge = tf.summary.merge_all()
     writer = tf.summary.FileWriter('logs/', sess.graph)
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
@@ -122,7 +140,7 @@ if __name__ == '__main__':
     for epoch in range(1, params['n_epoch']+1):
         while True:
             try:
-                _, step, loss, lr = sess.run([ops['train'],
+                _, step, train_loss, lr = sess.run([ops['train'],
                                               ops['global_step'],
                                               ops['train_loss'],
                                               ops['lr']])
@@ -130,7 +148,7 @@ if __name__ == '__main__':
                 break
             else:
                 if step % params['display_step'] == 0 or step == 1:
-                    print("Epoch %d | Step %d | Loss %.3f | LR: %.4f" % (epoch, step, loss, lr))
+                    print("Epoch %d | Step %d | Loss %.3f | LR: %.4f" % (epoch, step, train_loss, lr))
                     rs = sess.run(merge)
                     writer.add_summary(rs, step)
         Y_pred = []
