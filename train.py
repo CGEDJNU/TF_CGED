@@ -105,12 +105,14 @@ if __name__ == '__main__':
     
     decay_rate = 0.96
     #decay_rate = params['lr']['end']/params['lr']['start']
-    
-    ops['lr'] = tf.train.exponential_decay(
-        params['lr']['start'], ops['global_step'], decay_steps,
-        decay_rate, staircase=False)
-    
-    ops['loss'] = tf.reduce_mean(-log_likelihood)
+    with tf.name_scope('lr'):    
+        ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
+        tf.summary.scalar('lr', ops['lr'])
+    with tf.name_scope('loss'):
+        ops['loss'] = tf.reduce_mean(-log_likelihood)
+        tf.summary.scalar('loss', ops['loss'])
+    merge = tf.summary.merge_all()
+    writer = tf.summary.FileWriter('logs/', sess.graph)
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
         clip_grads(ops['loss'], params), global_step=ops['global_step'])
 
@@ -129,7 +131,8 @@ if __name__ == '__main__':
             else:
                 if step % params['display_step'] == 0 or step == 1:
                     print("Epoch %d | Step %d | Loss %.3f | LR: %.4f" % (epoch, step, loss, lr))
-        
+                    rs = sess.run(merge)
+                    writer.add_summary(rs, step)
         Y_pred = []
         while True:
             try:
