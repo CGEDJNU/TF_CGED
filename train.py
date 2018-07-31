@@ -97,7 +97,6 @@ if __name__ == '__main__':
     log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
         logits_tr, y_train_batch, tf.count_nonzero(X_train_batch, 1))
 
-
     ops['global_step'] = tf.Variable(0, trainable=False)
     
     decay_steps = 100
@@ -108,23 +107,24 @@ if __name__ == '__main__':
     with tf.name_scope('lr'):    
         ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
         tf.summary.scalar('lr', ops['lr'])
-    with tf.name_scope('loss'):
-        ops['loss'] = tf.reduce_mean(-log_likelihood)
-        tf.summary.scalar('loss', ops['loss'])
+    with tf.name_scope('train_loss'):
+        ops['train_loss'] = tf.reduce_mean(-log_likelihood)
+        tf.summary.scalar('train_loss', ops['train_loss'])
     merge = tf.summary.merge_all()
     writer = tf.summary.FileWriter('logs/', sess.graph)
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
-        clip_grads(ops['loss'], params), global_step=ops['global_step'])
+        clip_grads(ops['train_loss'], params), global_step=ops['global_step'])
 
     ops['crf_decode'] = tf.contrib.crf.crf_decode(
         logits_te, trans_params, tf.count_nonzero(X_test_batch, 1))[0]
+    
     sess.run(tf.global_variables_initializer())
     for epoch in range(1, params['n_epoch']+1):
         while True:
             try:
                 _, step, loss, lr = sess.run([ops['train'],
                                               ops['global_step'],
-                                              ops['loss'],
+                                              ops['train_loss'],
                                               ops['lr']])
             except tf.errors.OutOfRangeError:
                 break
