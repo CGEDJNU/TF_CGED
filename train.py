@@ -5,7 +5,10 @@ from sklearn.metrics import classification_report
 
 import os
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+#os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+#os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+tf.set_random_seed(-1)
 
 def pipeline_train(X, y, sess, params):
     dataset = tf.data.Dataset.from_tensor_slices((X, y))
@@ -45,10 +48,8 @@ def clip_grads(loss, params):
 
 def forward(x, reuse, is_training, params):
     with tf.variable_scope('model', reuse=reuse):
-        #x = tf.nn.relu(x)
         x = tf.contrib.layers.embed_sequence(x, params['vocab_size'], params['hidden_dim'])
         x = tf.layers.dropout(x, 0.1, training=is_training)
-        x = tf.nn.relu(x)
         bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(
             rnn_cell(params), rnn_cell(params), x, dtype=tf.float32)
         x = tf.concat(bi_outputs, -1)
@@ -69,10 +70,10 @@ if __name__ == '__main__':
         'seq_len': 80,
         'batch_size': 128,
         'n_class': 9,
-        'hidden_dim': 64,
+        'hidden_dim': 128,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 50,
+        'n_epoch': 40,
         'display_step': 10,
     }
     word_to_ix_path = 'data/word_to_ix.pkl'
