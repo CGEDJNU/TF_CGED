@@ -12,7 +12,8 @@ tf.set_random_seed(123)
 
 def pipeline_train(X, y, sess, params):
     dataset = tf.data.Dataset.from_tensor_slices((X, y))
-    dataset = dataset.shuffle(len(X)).batch(params['batch_size'])
+    dataset = dataset.batch(params['batch_size'])
+    #dataset = dataset.shuffle(len(X)).batch(params['batch_size'])
     iterator = dataset.make_initializable_iterator()
     X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
     y_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
@@ -48,17 +49,24 @@ def clip_grads(loss, params):
     clipped_grads, _ = tf.clip_by_global_norm(grads, params['clip_norm'])
     return zip(clipped_grads, variables)
 
-def forward(x, x_pos, reuse, is_training, params):
+def forward(x_char, x_pos, reuse, is_training, params):
     with tf.variable_scope('model', reuse=reuse):
-       #char, pos = tf.split(x, 2, 2)
-       x = tf.contrib.layers.embed_sequence(x, params['char_vocab_size'], params['hidden_dim'])
-       x_pos = tf.contrib.layers.embed_sequence(x_pos, params['pos_vocab_size'], params['hidden_dim'])
-       y = tf.concat([x, x_pos],2)
-       y = tf.nn.relu(y)
-       bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(rnn_cell(params), rnn_cell(params), y, dtype=tf.float32,time_major=False)
-       y = tf.concat(bi_outputs, -1)
-       y = tf.nn.relu(y)
-       logits = tf.layers.dense(y, params['n_class'])
+        # Input feature[character, pos, bigram]
+        x_char = tf.contrib.layers.embed_sequence(x_char, params['char_vocab_size'], params['hidden_dim'])
+        x_pos = tf.contrib.layers.embed_sequence(x_pos, params['pos_vocab_size'], params['hidden_dim'])
+       
+        # Concat dim according to [None, seq_len, hidden_dim]
+        concat_dim = 2
+        x = tf.concat([x_char, x_pos],concat_dim)
+       
+        x = tf.nn.relu(x)
+       
+        bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(rnn_cell(params), rnn_cell(params), x, dtype=tf.float32,time_major=False)
+       
+        x = tf.concat(bi_outputs, -1)
+        x = tf.nn.relu(x)
+       
+        logits = tf.layers.dense(x, params['n_class'])
     return logits    
 
 def eval(Y_test, Y_pred):
@@ -162,7 +170,7 @@ if __name__ == '__main__':
         eval(Y_test, Y_pred)
         if epoch != params['n_epoch']:
             sess.run(iter_train_char.initializer, init_dict_train_char)
-            sess.run(iter_test_char.initializer, init_dict_test_char)
             sess.run(iter_train_pos.initializer, init_dict_train_pos)
+            sess.run(iter_test_char.initializer, init_dict_test_char)
             sess.run(iter_test_pos.initializer, init_dict_test_pos)
     
