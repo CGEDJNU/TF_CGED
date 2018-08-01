@@ -5,7 +5,7 @@ from sklearn.metrics import classification_report
 
 import os
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '2,3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 #os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
 tf.set_random_seed(123)
@@ -59,7 +59,7 @@ def forward(x, x_pos, reuse, is_training, params):
        y = tf.concat(bi_outputs, -1)
        y = tf.nn.relu(y)
        logits = tf.layers.dense(y, params['n_class'])
-        
+    return logits    
 
 def eval(Y_test, Y_pred):
     # Eval(confusion matrix)
@@ -100,8 +100,6 @@ if __name__ == '__main__':
     X_train_char, X_train_pos = np.load(X_train_char_path), np.load(X_train_pos_path)
     X_test_char, X_test_pos = np.load(X_test_char_path), np.load(X_test_pos_path)
     Y_train, Y_test = np.load(Y_train_path), np.load(Y_test_path)
-    import pdb
-    pdb.set_trace()
     
     sess = tf.Session() 
     iter_train_char, init_dict_train_char = pipeline_train(X_train_char, Y_train, sess, params)
