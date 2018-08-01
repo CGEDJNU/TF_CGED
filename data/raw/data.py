@@ -48,14 +48,16 @@ def log_sum_exp(vec):
     return max_score + \
         torch.log(torch.sum(torch.exp(vec - max_score_broadcast)))
 
-def load_word_tag_ix(word_to_ix_path, pos_to_ix_path, tag_to_ix_path):
+def load_word_tag_ix(word_to_ix_path, bigram_to_ix_path, pos_to_ix_path, tag_to_ix_path):
     with open('../input/'+word_to_ix_path, 'rb') as wordf:
         word_to_ix = pickle.load(wordf)
+    with open('../input/'+bigram_to_ix_path, 'rb') as bigramf:
+        bigram_to_ix = pickle.load(bigramf)
     with open('../input/'+pos_to_ix_path, 'rb') as posf:
         pos_to_ix = pickle.load(posf)
     with open('../input/'+tag_to_ix_path, 'rb') as tagf:
         tag_to_ix = pickle.load(tagf)
-    return word_to_ix, pos_to_ix, tag_to_ix
+    return word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix
 
 def get_training_data(data_path, seq_len = 80):
     """
@@ -75,6 +77,7 @@ def get_training_data(data_path, seq_len = 80):
     list1 = []
     list2 = []
     list3 = []
+    
     for i in range(len(data)):
         if data[i] != '\n':
             char, pos, err = data[i].split()
@@ -92,17 +95,37 @@ def get_training_data(data_path, seq_len = 80):
             list1 = []
             list2 = []
             list3 = []
-    return training_data
+    # Add bigram feature
+    full_training_data = []
+    for i in range(len(training_data)):
+        list1, list3, list4 = training_data[i]
+        list2 = []
+        for j in range(len(list1)):
+                if j == 0:
+                    list2.append('<SOS>'+list1[j])
+                    list2.append(list1[j]+list1[j+1])
+                elif j == seq_len - 1:
+                    list2.append(list1[j]+'<EOS>')
+                else:
+                    list2.append(list1[j]+list1[j+1])
+        full_training_data.append((list1, list2, list3, list4))
+    return full_training_data
 
-def get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, pos_to_ix_path, tag_to_ix_path):
+def get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, bigram_to_ix_path, pos_to_ix_path, tag_to_ix_path):
     training_data = get_training_data(train_data_path)
     test_data = get_training_data(test_data_path) 
     all_data = training_data + test_data
     word_to_ix = {}
-    for sentence, pos, tags in all_data:
+    bigram_to_ix = {}
+    for sentence, bigram, pos, tags in all_data:
         for word in sentence:
             if word not in word_to_ix:
                 word_to_ix[word] = len(word_to_ix)+1
+        for gram in bigram:
+            if gram not in bigram_to_ix:
+                bigram_to_ix[gram] = len(bigram_to_ix)+1
+    
+    bigram_to_ix[' '] = 0
     word_to_ix[' '] = 0
     tag_to_ix = {"O": 0, "B-R": 1, "I-R": 2,"B-M": 3, "I-M": 4, "B-S": 5, "I-S": 6,"B-W": 7, "I-W": 8}
     pos_list = ['B-wp','B-o', 'B-a', 'I-m', 'B-ws', 'I-n', 'B-nl', 'I-nt', 'I-nl', 'I-nh', 'I-a', 'I-c', 'B-h', 'I-ni', 'B-p', 'B-n', 'B-z', 'I-i', 'B-v', 'B-m', 'I-q', 'I-r', 'I-p', 'I-u', 'B-nt', 'I-b', 'B-b', 'I-d', 'B-ns', 'B-ni', 'I-ns', 'B-q', 'B-nd', 'I-v', 'B-d', 'B-i', 'B-c', 'B-nh', 'I-ws', 'I-j', 'B-u', 'I-wp', 'B-j', 'B-r', 'I-z', 'I-nz', 'I-o', 'B-k', 'B-e', 'I-nd', 'B-nz']
@@ -113,21 +136,28 @@ def get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, pos_
         pickle.dump(pos_to_ix, posf)
     with open('../input/'+tag_to_ix_path, 'wb') as tagf:
         pickle.dump(tag_to_ix, tagf)
+    with open('../input/'+bigram_to_ix_path, 'wb') as bigramf:
+        pickle.dump(bigram_to_ix, bigramf)
 
-def get_train_test(data, word_to_ix, pos_to_ix, tag_to_ix):
+def get_train_test(data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix):
         char_seqs = [data[i][0] for i in range(len(data))]
         char_seqs_ix = [seq_to_ix(seq, word_to_ix) for seq in char_seqs]
         
-        pos_seqs = [data[i][1] for i in range(len(data))]
+        bigram_seqs = [data[i][1] for i in range(len(data))]
+        bigram_seqs_ix = [seq_to_ix(seq, bigram_to_ix) for seq in bigram_seqs]
+        
+        pos_seqs = [data[i][2] for i in range(len(data))]
         pos_seqs_ix = [seq_to_ix(seq, pos_to_ix) for seq in pos_seqs]
         
-        tag_seqs = [data[i][2] for i in range(len(data))]
+        tag_seqs = [data[i][3] for i in range(len(data))]
         tag_seqs_ix = [seq_to_ix(seq, tag_to_ix) for seq in tag_seqs]
 
         X_char = np.array(char_seqs_ix)
+        X_bigram = np.array(bigram_seqs_ix)
         X_pos = np.array(pos_seqs_ix)
+        
         Y  = np.array(tag_seqs_ix)
-        return X_char, X_pos, Y
+        return X_char, X_bigram, X_pos, Y
 #####################################################################
 
 if __name__ == '__main__':
@@ -137,14 +167,15 @@ if __name__ == '__main__':
         word_to_ix_path = '../input/word_to_ix.pkl'
         pos_to_ix_path = '../input/pos_to_ix.pkl'        
         tag_to_ix_path = '../input/tag_to_ix.pkl'
+        bigram_to_ix_path = '../input/bigram_to_ix.pkl'
         
-        get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, pos_to_ix_path, tag_to_ix_path)
-        word_to_ix, pos_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, pos_to_ix_path, tag_to_ix_path)
+        #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, bigram_to_ix_path, pos_to_ix_path, tag_to_ix_path)
+        word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, bigram_to_ix_path,pos_to_ix_path, tag_to_ix_path)
         train_data = get_training_data(train_data_path)
         test_data = get_training_data(test_data_path)
-        X_train_char, X_train_pos, Y_train =    get_train_test(train_data, word_to_ix, pos_to_ix, tag_to_ix)	
-        X_test_char, X_test_pos, Y_test    =    get_train_test(test_data, word_to_ix, pos_to_ix, tag_to_ix)
-        data = [X_train_char, X_train_pos, Y_train, X_test_char, X_test_pos, Y_test]
-        name = ['X_train_char.npy', 'X_train_pos.npy','Y_train.npy', 'X_test_char.npy', 'X_test_pos.npy', 'Y_test.npy']
+        X_train_char, X_train_bigram, X_train_pos,Y_train =    get_train_test(train_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)	
+        X_test_char, X_test_bigram, X_test_pos, Y_test    =    get_train_test(test_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)
+        data = [X_train_char, X_train_bigram, X_train_pos, Y_train, X_test_char, X_test_bigram, X_test_pos, Y_test]
+        name = ['X_train_char.npy', 'X_train_bigram.npy','X_train_pos.npy','Y_train.npy', 'X_test_char.npy', 'X_test_bigram.npy','X_test_pos.npy', 'Y_test.npy']
         for i in range(len(data)):
             np.save('../input/'+name[i], data[i])
