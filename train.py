@@ -69,6 +69,7 @@ def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
         x_char = tf.contrib.layers.embed_sequence(x_char, params['char_vocab_size'], params['hidden_dim'])
         x_bigram = tf.contrib.layers.embed_sequence(x_bigram, params['bigram_vocab_size'], params['hidden_dim'])
         x_pos = tf.contrib.layers.embed_sequence(x_pos, params['pos_vocab_size'], params['hidden_dim'])
+        
         # Concat bigram
         start_bigram = tf.zeros([params['batch_size'], 1, params['hidden_dim']])
         x_bigram_except_start = x_bigram[:, 1:, :]
@@ -76,14 +77,11 @@ def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
 
         # Concat dim according to [None, seq_len, hidden_dim]
         x = tf.concat([x_char, x_bigram, x_bigram_add,x_pos],axis=2)
-       
         x = tf.nn.relu(x)
-       
         bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(rnn_cell(params), rnn_cell(params), x, dtype=tf.float32,time_major=False)
        
         x = tf.concat(bi_outputs, -1)
         x = tf.nn.relu(x)
-       
         logits = tf.layers.dense(x, params['n_class'])
     return logits    
 
