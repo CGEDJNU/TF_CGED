@@ -101,13 +101,19 @@ def get_training_data(data_path, seq_len = 80):
         list1, list3, list4 = training_data[i]
         list2 = []
         for j in range(len(list1)):
-                if j == 0:
-                    list2.append('<SOS>'+list1[j])
-                    list2.append(list1[j]+list1[j+1])
-                elif j == seq_len - 1:
+                #if j == 0:
+                #    list2.append('<SOS>'+list1[j])
+                #    list2.append(list1[j]+list1[j+1])
+                #elif j == seq_len - 1:
+                #    list2.append(list1[j]+'<EOS>')
+                #else:
+                #    list2.append(list1[j]+list1[j+1])
+                
+                if j == seq_len - 1:
                     list2.append(list1[j]+'<EOS>')
                 else:
                     list2.append(list1[j]+list1[j+1])
+        
         full_training_data.append((list1, list2, list3, list4))
     return full_training_data
 

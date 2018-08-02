@@ -55,7 +55,7 @@ def load_word_tag_ix(word_to_ix_path, bigram_to_ix_path, pos_to_ix, tag_to_ix_pa
 
 def rnn_cell(params):
     #return tf.nn.rnn_cell.GRUCell(params['hidden_dim'],kernel_initializer=tf.orthogonal_initializer())
-    return tf.nn.rnn_cell.BasicLSTMCell(params['hidden_dim'] * 3, forget_bias=1.0)
+    return tf.nn.rnn_cell.BasicLSTMCell(params['hidden_dim'] * 4, forget_bias=1.0)
 
 def clip_grads(loss, params):
     variables = tf.trainable_variables()
@@ -69,10 +69,13 @@ def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
         x_char = tf.contrib.layers.embed_sequence(x_char, params['char_vocab_size'], params['hidden_dim'])
         x_bigram = tf.contrib.layers.embed_sequence(x_bigram, params['bigram_vocab_size'], params['hidden_dim'])
         x_pos = tf.contrib.layers.embed_sequence(x_pos, params['pos_vocab_size'], params['hidden_dim'])
-       
+        # Concat bigram
+        start_bigram = tf.zeros([params['batch_size'], 1, params['hidden_dim']])
+        x_bigram_except_start = x_bigram[:, 1:, :]
+        x_bigram_add = tf.concat([start_bigram, x_bigram_except_start], axis=1)
+
         # Concat dim according to [None, seq_len, hidden_dim]
-        concat_dim = 2
-        x = tf.concat([x_char, x_bigram, x_pos],concat_dim)
+        x = tf.concat([x_char, x_bigram, x_bigram_add,x_pos],axis=2)
        
         x = tf.nn.relu(x)
        
@@ -96,7 +99,7 @@ if __name__ == '__main__':
         'seq_len': 80,
         'batch_size': 128,
         'n_class': 9,
-        'hidden_dim': 128,
+        'hidden_dim': 64,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
         'n_epoch': 40,
