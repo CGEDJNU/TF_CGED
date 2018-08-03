@@ -8,6 +8,8 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 #os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
 tf.set_random_seed(123)
 
 def pipeline_train(X, y, sess, params, isBigram=False):
@@ -97,10 +99,10 @@ if __name__ == '__main__':
         'seq_len': 80,
         'batch_size': 128,
         'n_class': 9,
-        'hidden_dim': 64,
+        'hidden_dim': 128,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 40,
+        'n_epoch': 100,
         'display_step': 10,
     }
     word_to_ix_path = 'data/input/word_to_ix.pkl'
@@ -129,14 +131,14 @@ if __name__ == '__main__':
     X_train_char, X_train_bigram, X_train_pos = np.load(X_train_char_path), np.load(X_train_bigram_path),np.load(X_train_pos_path)
     X_test_char, X_test_bigram,X_test_pos = np.load(X_test_char_path), np.load(X_test_bigram_path), np.load(X_test_pos_path)
     
-    train_end_index = int(X_train_char.shape[0] / params['batch_size'] ) * params['batch_size'] 
-    test_end_index = int(X_test_char.shape[0] / params['batch_size'] ) * params['batch_size'] 
+    train_end_index = ( X_train_char.shape[0] //  params['batch_size'] ) * params['batch_size'] 
+    test_end_index = ( X_test_char.shape[0] // params['batch_size'] ) * params['batch_size'] 
     
     Y_train, Y_test = np.load(Y_train_path), np.load(Y_test_path)
     
     Y_test = Y_test[:test_end_index]
     
-    sess = tf.Session() 
+    sess = tf.Session(config=config) 
     
     iter_train_char, init_dict_train_char = pipeline_train(X_train_char[:train_end_index], Y_train[:train_end_index], sess, params)
     iter_test_char, init_dict_test_char = pipeline_test(X_test_char[:test_end_index], sess, params)
@@ -166,11 +168,11 @@ if __name__ == '__main__':
 
     ops['global_step'] = tf.Variable(0, trainable=False)
     
-    decay_steps = 100
-    #decay_steps = len(X_train) // params['batch_size']
+    #decay_steps = 100
+    decay_steps = X_train_char.shape[0] // params['batch_size']
     
-    decay_rate = 0.96
-    #decay_rate = params['lr']['end']/params['lr']['start']
+    #decay_rate = 0.96
+    decay_rate = params['lr']['end'] / params['lr']['start']
     ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
     
     ops['train_loss'] = tf.reduce_mean(-log_likelihood)
@@ -210,3 +212,5 @@ if __name__ == '__main__':
             sess.run(iter_test_pos.initializer, init_dict_test_pos)
             sess.run(iter_test_bigram.initializer, init_dict_test_bigram)
     
+    # Close session
+    sess.close() 
