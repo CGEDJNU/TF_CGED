@@ -80,9 +80,10 @@ def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
         # Concat dim according to [None, seq_len, hidden_dim]
         x = tf.concat([x_char, x_bigram, x_bigram_add,x_pos],axis=2)
         x = tf.nn.relu(x)
+        
         bi_outputs, _ = tf.nn.bidirectional_dynamic_rnn(rnn_cell(params), rnn_cell(params), x, dtype=tf.float32,time_major=False)
-       
         x = tf.concat(bi_outputs, -1)
+        
         x = tf.nn.relu(x)
         logits = tf.layers.dense(x, params['n_class'])
     return logits    
@@ -102,7 +103,7 @@ if __name__ == '__main__':
         'hidden_dim': 128,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 100,
+        'n_epoch': 10,
         'display_step': 10,
     }
     word_to_ix_path = 'data/input/word_to_ix.pkl'
@@ -170,12 +171,16 @@ if __name__ == '__main__':
     
     #decay_steps = 100
     decay_steps = X_train_char.shape[0] // params['batch_size']
-    
     #decay_rate = 0.96
     decay_rate = params['lr']['end'] / params['lr']['start']
-    ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
     
-    ops['train_loss'] = tf.reduce_mean(-log_likelihood)
+    with tf.name_scope('lr'):
+        ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
+        tf.summary.scalar('lr', ops['lr'])
+
+    with tf.name_scope('train_loss'):
+        ops['train_loss'] = tf.reduce_mean(-log_likelihood)
+        tf.summary.scalar('train_loss', ops['train_loss'])
     
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
         clip_grads(ops['train_loss'], params), global_step=ops['global_step'])
@@ -183,6 +188,10 @@ if __name__ == '__main__':
     ops['crf_decode'] = tf.contrib.crf.crf_decode(
         logits_te, trans_params, tf.count_nonzero(X_test_char_batch, 1))[0]
     
+    merge = tf.summary.merge_all()
+    writer = tf.summary.FileWriter('logs/', sess.graph)
+    saver = tf.train.Saver()
+
     sess.run(tf.global_variables_initializer())
     for epoch in range(1, params['n_epoch']+1):
         while True:
@@ -196,6 +205,13 @@ if __name__ == '__main__':
             else:
                 if step % params['display_step'] == 0 or step == 1:
                     print("Epoch %d | Step %d | Train_Loss %.3f | LR: %.4f" % (epoch, step, train_loss, lr))
+                    
+                    # Store train log
+                    writer.add_summary(sess.run(merge), step)
+
+                    save_path =  saver.save(sess, 'models/model.ckpt', step)
+                    #print(save_path)
+        
         Y_pred = []
         while True:
             try:
