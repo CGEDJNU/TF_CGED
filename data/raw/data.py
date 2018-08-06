@@ -3,6 +3,7 @@ import time
 import pickle
 #from tqdm import tqdm
 import argparse
+import word2vec
 
 import torch
 import torch.autograd as autograd
@@ -164,6 +165,27 @@ def get_train_test(data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix):
         
         Y  = np.array(tag_seqs_ix)
         return X_char, X_bigram, X_pos, Y
+
+def get_word2vec_model(corpus_path, model_path, embedding_dim):
+    word2vec.word2vec(corpus_path, model_path, embedding_dim, verbose=True)
+    exit()
+
+def get_data_by_bigram(train_data, test_data, corpus_path):
+    # Merge data
+    data = []
+    data.extend(train_data)
+    data.extend(test_data)
+    
+    for i in range(len(data)):
+        sample = data[i][0]
+        sample_split = []
+        for j in range(len(sample)-1):
+                sample_split.append(sample[j])
+                sample_split.append(sample[j+1])
+                sample_split.append(' ')
+        sample_str = ''.join(sample_split)
+        with open(corpus_path, 'a+') as f:
+            f.write(sample_str+'\n')
 #####################################################################
 
 if __name__ == '__main__':
@@ -175,10 +197,19 @@ if __name__ == '__main__':
         tag_to_ix_path = '../input/tag_to_ix.pkl'
         bigram_to_ix_path = '../input/bigram_to_ix.pkl'
         
+        corpus_path = '../input/bigram_corpus_train_test.txt'
+        word2vec_model_path = '../input/word2vec_model.bin'
+        embedding_dim = 128
+        
+        #get_word2vec_model(corpus_path, word2vec_model_path, embedding_dim)
+        
         #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, bigram_to_ix_path, pos_to_ix_path, tag_to_ix_path)
         word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, bigram_to_ix_path,pos_to_ix_path, tag_to_ix_path)
         train_data = get_training_data(train_data_path)
         test_data = get_training_data(test_data_path)
+        
+        #get_data_by_bigram(train_data, test_data, corpus_path, word2vec_model_path, embedding_dim)
+        
         X_train_char, X_train_bigram, X_train_pos,Y_train =    get_train_test(train_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)	
         X_test_char, X_test_bigram, X_test_pos, Y_test    =    get_train_test(test_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)
         data = [X_train_char, X_train_bigram, X_train_pos, Y_train, X_test_char, X_test_bigram, X_test_pos, Y_test]
