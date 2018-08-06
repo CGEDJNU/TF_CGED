@@ -2,7 +2,7 @@ import pickle
 import numpy as np
 import tensorflow as tf
 from sklearn.metrics import classification_report
-
+import word2vec
 import os
 #os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
@@ -17,11 +17,10 @@ def pipeline_train(X, y, sess, params, isBigram=False):
     dataset = dataset.batch(params['batch_size'])
     #dataset = dataset.shuffle(len(X)).batch(params['batch_size'])
     iterator = dataset.make_initializable_iterator()
-    #if not isBigram:
-    #    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
-    #else:
-    #    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']+1])
-    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    if not isBigram:
+        X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    else:
+        X_ph = tf.placeholder(tf.int32, [None, params['seq_len'], params['hidden_dim']])
     y_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
     init_dict = {X_ph: X, y_ph: y}
     sess.run(iterator.initializer, init_dict)
@@ -31,11 +30,10 @@ def pipeline_test(X, sess, params, isBigram=False):
     dataset = tf.data.Dataset.from_tensor_slices(X)
     dataset = dataset.batch(params['batch_size'])
     iterator = dataset.make_initializable_iterator()
-    #if not isBigram:
-    #    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
-    #else:
-    #    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']+1])
-    X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    if not isBigram:
+        X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
+    else:
+        X_ph = tf.placeholder(tf.int32, [None, params['seq_len'], params['hidden_dim']])
     init_dict = {X_ph: X}
     sess.run(iterator.initializer, init_dict)
     return iterator, init_dict
@@ -88,6 +86,22 @@ def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
         logits = tf.layers.dense(x, params['n_class'])
     return logits    
 
+def get_bigram_vector(X_train_bigram, save_path):
+    # Bigram to number
+    bigrams = []
+    for i in range(X_train_bigram.shape[0]):
+        print(i)
+        bigram_list = []
+        for elem in X_train_bigram[i].tolist():
+            word = ix_to_bigram[elem]
+            if word not in list(word2vec_model.vocab):
+                bigram_list.append( np.zeros((params['hidden_dim'],)) )
+            else:
+                bigram_list.append( word2vec_model.get_vector(word) )
+            bigrams.append(bigram_list)
+    
+    return np.save(save_path,np.array(bigrams))
+
 def eval(Y_test, Y_pred):
     # Eval(confusion matrix)
     labels = [i for i in range(params['n_class'])]
@@ -110,7 +124,8 @@ if __name__ == '__main__':
     bigram_to_ix_path = 'data/input/bigram_to_ix.pkl'
     pos_to_ix_path = 'data/input/pos_to_ix.pkl'
     tag_to_ix_path = 'data/input/tag_to_ix.pkl'
-        
+    word2vec_model_path = 'data/input/word2vec_model.bin'
+
     X_train_char_path = 'data/input/X_train_char.npy'
     X_train_bigram_path = 'data/input/X_train_bigram.npy'
     X_train_pos_path = 'data/input/X_train_pos.npy'
@@ -120,17 +135,26 @@ if __name__ == '__main__':
     X_test_bigram_path = 'data/input/X_test_bigram.npy'
     X_test_pos_path = 'data/input/X_test_pos.npy'
     Y_test_path = 'data/input/Y_test.npy'
-    
+ 
     word_to_ix, bigram_to_ix, pos_to_ix,tag_to_ix = load_word_tag_ix(word_to_ix_path, bigram_to_ix_path,pos_to_ix_path, tag_to_ix_path)
     params['char_vocab_size'] = len(word_to_ix)
     params['bigram_vocab_size'] = len(bigram_to_ix)
     params['pos_vocab_size'] = len(pos_to_ix)
+    
     ix_to_tag = {v:k for k, v in tag_to_ix.items()}
+    ix_to_bigram = {v:k for k, v in bigram_to_ix.items()}    
     
-    
+    # Word2Vec
+    word2vec_model = word2vec.load(word2vec_model_path)
+
     # Load data
     X_train_char, X_train_bigram, X_train_pos = np.load(X_train_char_path), np.load(X_train_bigram_path),np.load(X_train_pos_path)
     X_test_char, X_test_bigram,X_test_pos = np.load(X_test_char_path), np.load(X_test_bigram_path), np.load(X_test_pos_path)
+    
+    # Save word2vec dict
+    get_bigram_vector(X_train_bigram,'data/input/X_train_bigram.npy') 
+    get_bigram_vector(X_test_bigram,'data/input/X_test_bigram.npy') 
+    exit()
     
     train_end_index = ( X_train_char.shape[0] //  params['batch_size'] ) * params['batch_size'] 
     test_end_index = ( X_test_char.shape[0] // params['batch_size'] ) * params['batch_size'] 
@@ -144,8 +168,8 @@ if __name__ == '__main__':
     iter_train_char, init_dict_train_char = pipeline_train(X_train_char[:train_end_index], Y_train[:train_end_index], sess, params)
     iter_test_char, init_dict_test_char = pipeline_test(X_test_char[:test_end_index], sess, params)
     
-    iter_train_bigram, init_dict_train_bigram = pipeline_train(X_train_bigram[:train_end_index], Y_train[:train_end_index], sess, params)
-    iter_test_bigram, init_dict_test_bigram = pipeline_test(X_test_bigram[:test_end_index], sess, params)
+    iter_train_bigram, init_dict_train_bigram = pipeline_train(X_train_bigram[:train_end_index], Y_train[:train_end_index], sess, params, True)
+    iter_test_bigram, init_dict_test_bigram = pipeline_test(X_test_bigram[:test_end_index], sess, params, True)
     
     iter_train_pos, init_dict_train_pos = pipeline_train(X_train_pos[:train_end_index], Y_train[:train_end_index], sess, params)
     iter_test_pos, init_dict_test_pos = pipeline_test(X_test_pos[:test_end_index], sess, params)
@@ -155,7 +179,7 @@ if __name__ == '__main__':
     X_train_char_batch, y_train_batch = iter_train_char.get_next()
     X_test_char_batch = iter_test_char.get_next()
     
-    X_train_bigram_batch, y_train_batch = iter_train_char.get_next()
+    X_train_bigram_batch, y_train_batch = iter_train_bigram.get_next()
     X_test_bigram_batch = iter_test_bigram.get_next()
     
     X_train_pos_batch, y_train_batch = iter_train_pos.get_next()
