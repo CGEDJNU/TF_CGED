@@ -63,11 +63,14 @@ def clip_grads(loss, params):
     clipped_grads, _ = tf.clip_by_global_norm(grads, params['clip_norm'])
     return zip(clipped_grads, variables)
 
-def forward(x_char, x_bigram, x_pos, reuse, is_training, params):
+def forward(x_char, x_bigram, x_pos, reuse, is_training, params, isBigram=False):
     with tf.variable_scope('model', reuse=reuse):
         # Input feature[character, pos, bigram]
         x_char = tf.contrib.layers.embed_sequence(x_char, params['char_vocab_size'], params['hidden_dim'])
-        x_bigram = tf.contrib.layers.embed_sequence(x_bigram, params['bigram_vocab_size'], params['hidden_dim'])
+        if not isBigram:
+            x_bigram = tf.contrib.layers.embed_sequence(x_bigram, params['bigram_vocab_size'], params['hidden_dim'])
+        else:
+            x_bigram = tf.cast(x_bigram, tf.float32)
         x_pos = tf.contrib.layers.embed_sequence(x_pos, params['pos_vocab_size'], params['hidden_dim'])
         
         # Concat bigram
@@ -136,7 +139,7 @@ if __name__ == '__main__':
     X_train_char, X_train_bigram, X_train_pos = np.load(X_train_char_path), np.load(X_train_bigram_path),np.load(X_train_pos_path)
     X_test_char, X_test_bigram,X_test_pos = np.load(X_test_char_path), np.load(X_test_bigram_path), np.load(X_test_pos_path)
    
-    word2vec_tag = False
+    word2vec_tag = True
     if word2vec_tag == False:
         X_train_bigram = np.load(X_train_bigram_path)
         X_test_bigram = np.load(X_test_bigram_path)
@@ -157,8 +160,8 @@ if __name__ == '__main__':
     iter_train_char, init_dict_train_char = pipeline_train(X_train_char[:train_end_index], Y_train[:train_end_index], sess, params)
     iter_test_char, init_dict_test_char = pipeline_test(X_test_char[:test_end_index], sess, params)
     
-    iter_train_bigram, init_dict_train_bigram = pipeline_train(X_train_bigram[:train_end_index], Y_train[:train_end_index], sess, params, False)
-    iter_test_bigram, init_dict_test_bigram = pipeline_test(X_test_bigram[:test_end_index], sess, params, False)
+    iter_train_bigram, init_dict_train_bigram = pipeline_train(X_train_bigram[:train_end_index], Y_train[:train_end_index], sess, params, True)
+    iter_test_bigram, init_dict_test_bigram = pipeline_test(X_test_bigram[:test_end_index], sess, params, True)
     
     iter_train_pos, init_dict_train_pos = pipeline_train(X_train_pos[:train_end_index], Y_train[:train_end_index], sess, params)
     iter_test_pos, init_dict_test_pos = pipeline_test(X_test_pos[:test_end_index], sess, params)
@@ -173,9 +176,8 @@ if __name__ == '__main__':
     
     X_train_pos_batch, y_train_batch = iter_train_pos.get_next()
     X_test_pos_batch = iter_test_pos.get_next()
-
-    logits_tr = forward(X_train_char_batch, X_train_bigram_batch,X_train_pos_batch,False, True, params)
-    logits_te = forward(X_test_char_batch, X_test_bigram_batch,X_test_pos_batch, True, False, params)
+    logits_tr = forward(X_train_char_batch, X_train_bigram_batch,X_train_pos_batch,False, True, params, True)
+    logits_te = forward(X_test_char_batch, X_test_bigram_batch,X_test_pos_batch, True, False, params, True)
     
     log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
         logits_tr, y_train_batch, tf.count_nonzero(X_train_char_batch, 1))
