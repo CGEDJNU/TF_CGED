@@ -4,6 +4,7 @@ import pickle
 #from tqdm import tqdm
 import argparse
 import word2vec
+from tqdm import tqdm
 
 import torch
 import torch.autograd as autograd
@@ -168,7 +169,6 @@ def get_train_test(data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix):
 
 def get_word2vec_model(corpus_path, model_path, embedding_dim):
     word2vec.word2vec(corpus_path, model_path, embedding_dim, verbose=True)
-    exit()
 
 def get_data_by_bigram(train_data, test_data, corpus_path):
     # Merge data
@@ -177,18 +177,34 @@ def get_data_by_bigram(train_data, test_data, corpus_path):
     data.extend(test_data)
     
     for i in range(len(data)):
-        sample = data[i][0]
+        sample = data[i][1]
         sample_split = []
-        for j in range(len(sample)-1):
+        for j in range(len(sample)):
                 sample_split.append(sample[j])
-                sample_split.append(sample[j+1])
                 sample_split.append(' ')
+
         sample_str = ''.join(sample_split)
         with open(corpus_path, 'a+') as f:
             f.write(sample_str+'\n')
+
+def get_bigram_vector(X_train_bigram, ix_to_bigram, save_path, word2vec_model, hidden_dim):
+    # Bigram to number
+    bigrams = []
+    for i in tqdm(range(X_train_bigram.shape[0])):
+        bigram_list = []
+        for elem in X_train_bigram[i].tolist():
+            word = ix_to_bigram[elem]
+            if word not in list(word2vec_model.vocab):
+                bigram_list.append( np.zeros((hidden_dim,)) )
+            else:
+                bigram_list.append( word2vec_model.get_vector(word) )
+            bigrams.append(bigram_list)
+    
+    return np.save(save_path,np.array(bigrams))
 #####################################################################
 
 if __name__ == '__main__':
+        
         train_data_path = 'train_CGED2016_2018.txt'
         test_data_path = 'test_CGED2016.txt'
         
@@ -197,22 +213,38 @@ if __name__ == '__main__':
         tag_to_ix_path = '../input/tag_to_ix.pkl'
         bigram_to_ix_path = '../input/bigram_to_ix.pkl'
         
-        corpus_path = '../input/bigram_corpus_train_test.txt'
+        corpus_path = '../input/corpus_bigram_train_test.txt'
         word2vec_model_path = '../input/word2vec_model.bin'
         embedding_dim = 128
         
-        #get_word2vec_model(corpus_path, word2vec_model_path, embedding_dim)
+        
+        X_train_bigram_vec_path = 'data/input/X_train_bigram_vec.npy'
+        X_test_bigram_vec_path = 'data/input/X_test_bigram_vec.npy'
         
         #get_dict_word_and_tag(train_data_path, test_data_path, word_to_ix_path, bigram_to_ix_path, pos_to_ix_path, tag_to_ix_path)
         word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix = load_word_tag_ix(word_to_ix_path, bigram_to_ix_path,pos_to_ix_path, tag_to_ix_path)
+        ix_to_bigram = {v:k for k, v in bigram_to_ix.items()}    
+
         train_data = get_training_data(train_data_path)
         test_data = get_training_data(test_data_path)
-        
-        #get_data_by_bigram(train_data, test_data, corpus_path, word2vec_model_path, embedding_dim)
+       
         
         X_train_char, X_train_bigram, X_train_pos,Y_train =    get_train_test(train_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)	
         X_test_char, X_test_bigram, X_test_pos, Y_test    =    get_train_test(test_data, word_to_ix, bigram_to_ix, pos_to_ix, tag_to_ix)
-        data = [X_train_char, X_train_bigram, X_train_pos, Y_train, X_test_char, X_test_bigram, X_test_pos, Y_test]
-        name = ['X_train_char.npy', 'X_train_bigram.npy','X_train_pos.npy','Y_train.npy', 'X_test_char.npy', 'X_test_bigram.npy','X_test_pos.npy', 'Y_test.npy']
-        for i in range(len(data)):
-            np.save('../input/'+name[i], data[i])
+        #data = [X_train_char, X_train_bigram, X_train_pos, Y_train, X_test_char, X_test_bigram, X_test_pos, Y_test]
+        #name = ['X_train_char.npy', 'X_train_bigram.npy','X_train_pos.npy','Y_train.npy', 'X_test_char.npy', 'X_test_bigram.npy','X_test_pos.npy', 'Y_test.npy']
+        #for i in range(len(data)):
+        #    np.save('../input/'+name[i], data[i])
+        #print('Data saving is Done!') 
+
+
+        # Train word2vec model
+        print('Start training word2vec model.')
+        get_data_by_bigram(train_data, test_data, corpus_path)
+        get_word2vec_model(corpus_path, word2vec_model_path, embedding_dim)
+        # Word2Vec
+        word2vec_model = word2vec.load(word2vec_model_path)
+        # Save word2vec dict
+        get_bigram_vector(X_train_bigram, ix_to_bigram, X_train_bigram_vec_path, word2vec_model, embedding_dim) 
+        get_bigram_vector(X_test_bigram, ix_to_bigram, X_test_bigram_vec_path, word2vec_model, embedding_dim) 
+        print('Done!')
