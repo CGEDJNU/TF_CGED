@@ -8,7 +8,7 @@ import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
 #os.environ['CUDA_VISIBLE_DEVICES'] = ''
 
-config = tf.ConfigProto()
+config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
 tf.set_random_seed(123)
 
