@@ -116,7 +116,7 @@ if __name__ == '__main__':
         'hidden_dim': 128,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 1,
+        'n_epoch': 40,
         'display_step': 10,
     }
     
@@ -230,15 +230,16 @@ if __name__ == '__main__':
     for epoch in range(1, params['n_epoch']+1):
         while True:
             try:
-                _, step, train_loss, lr = sess.run([ops['train'],
+                _, step, train_loss, val_loss, lr = sess.run([ops['train'],
                                               ops['global_step'],
                                               ops['train_loss'],
+                                              ops['val_loss'],
                                               ops['lr']])
             except tf.errors.OutOfRangeError:
                 break
             else:
                 if step % params['display_step'] == 0 or step == 1:
-                    print("Epoch %d | Step %d | Train_Loss %.3f | LR: %.4f" % (epoch, step, train_loss, lr))
+                    print("Epoch %d | Step %d | Train_Loss %.3f | Val_loss: %.3f | LR: %.4f" % (epoch, step, train_loss, val_loss, lr))
                     
                     # Store train log
                     writer.add_summary(sess.run(merge), step)
@@ -246,14 +247,14 @@ if __name__ == '__main__':
                     save_path =  saver.save(sess, 'models/model.ckpt', step)
                     #print(save_path)
         
-        Y_pred = []
-        while True:
-            try:
-                Y_pred.append(sess.run(ops['crf_decode']))
-            except tf.errors.OutOfRangeError:
-                break
-        Y_pred = np.concatenate(Y_pred)
-        eval(Y_test, Y_pred)
+        #Y_pred = []
+        #while True:
+        #    try:
+        #        Y_pred.append(sess.run(ops['crf_decode']))
+        #    except tf.errors.OutOfRangeError:
+        #        break
+        #Y_pred = np.concatenate(Y_pred)
+        #eval(Y_test, Y_pred)
         if epoch != params['n_epoch']:
             sess.run(iter_train_char.initializer, init_dict_train_char)
             sess.run(iter_train_pos.initializer, init_dict_train_pos)
