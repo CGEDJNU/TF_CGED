@@ -38,20 +38,6 @@ def pipeline_test(X, sess, params, isBigram=False):
     sess.run(iterator.initializer, init_dict)
     return iterator, init_dict
 
-def pipeline_test_(X, y, sess, params, isBigram=False):
-    dataset = tf.data.Dataset.from_tensor_slices((X, y))
-    dataset = dataset.batch(params['batch_size'])
-    iterator = dataset.make_initializable_iterator()
-    if not isBigram:
-        X_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
-    else:
-        X_ph = tf.placeholder(tf.int32, [None, params['seq_len'], params['hidden_dim']])
-
-    y_ph = tf.placeholder(tf.int32, [None, params['seq_len']])
-    init_dict = {X_ph: X, y_ph: y}
-    sess.run(iterator.initializer, init_dict)
-    return iterator, init_dict
-
 def load_word_tag_ix(word_to_ix_path, bigram_to_ix_path, pos_to_ix, tag_to_ix_path):
     with open(word_to_ix_path, 'rb') as wordf:
             word_to_ix = pickle.load(wordf)
@@ -116,10 +102,9 @@ if __name__ == '__main__':
         'hidden_dim': 128,
         'clip_norm': 5.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 40,
+        'n_epoch': 10,
         'display_step': 10,
     }
-    
     word_to_ix_path = 'data/input/word_to_ix.pkl'
     bigram_to_ix_path = 'data/input/bigram_to_ix.pkl'
     pos_to_ix_path = 'data/input/pos_to_ix.pkl'
@@ -148,11 +133,10 @@ if __name__ == '__main__':
     
 
     # Load data
-    X_train_char, X_train_pos = np.load(X_train_char_path), np.load(X_train_pos_path)
-    X_test_char, X_test_pos = np.load(X_test_char_path), np.load(X_test_pos_path)
+    X_train_char, X_train_bigram, X_train_pos = np.load(X_train_char_path), np.load(X_train_bigram_path),np.load(X_train_pos_path)
+    X_test_char, X_test_bigram,X_test_pos = np.load(X_test_char_path), np.load(X_test_bigram_path), np.load(X_test_pos_path)
    
     word2vec_tag = False
-    
     if word2vec_tag == False:
         X_train_bigram = np.load(X_train_bigram_path)
         X_test_bigram = np.load(X_test_bigram_path)
@@ -166,36 +150,36 @@ if __name__ == '__main__':
     
     Y_train, Y_test = np.load(Y_train_path), np.load(Y_test_path)
     
+    Y_test = Y_test[:test_end_index]
     
     sess = tf.Session(config=config) 
     
     iter_train_char, init_dict_train_char = pipeline_train(X_train_char[:train_end_index], Y_train[:train_end_index], sess, params)
-    iter_test_char, init_dict_test_char = pipeline_test_(X_test_char[:test_end_index], Y_test[:test_end_index], sess, params)
+    iter_test_char, init_dict_test_char = pipeline_test(X_test_char[:test_end_index], sess, params)
     
     iter_train_bigram, init_dict_train_bigram = pipeline_train(X_train_bigram[:train_end_index], Y_train[:train_end_index], sess, params, False)
-    iter_test_bigram, init_dict_test_bigram = pipeline_test_(X_test_bigram[:test_end_index], Y_test[:test_end_index], sess, params, False)
+    iter_test_bigram, init_dict_test_bigram = pipeline_test(X_test_bigram[:test_end_index], sess, params, False)
     
     iter_train_pos, init_dict_train_pos = pipeline_train(X_train_pos[:train_end_index], Y_train[:train_end_index], sess, params)
-    iter_test_pos, init_dict_test_pos = pipeline_test_(X_test_pos[:test_end_index], Y_test[:test_end_index], sess, params)
+    iter_test_pos, init_dict_test_pos = pipeline_test(X_test_pos[:test_end_index], sess, params)
 
     ops = {}
      
     X_train_char_batch, y_train_batch = iter_train_char.get_next()
-    X_test_char_batch, y_test_batch = iter_test_char.get_next()
+    X_test_char_batch = iter_test_char.get_next()
     
     X_train_bigram_batch, y_train_batch = iter_train_bigram.get_next()
-    X_test_bigram_batch, y_test_batch = iter_test_bigram.get_next()
+    X_test_bigram_batch = iter_test_bigram.get_next()
     
     X_train_pos_batch, y_train_batch = iter_train_pos.get_next()
-    X_test_pos_batch, y_test_batch = iter_test_pos.get_next()
+    X_test_pos_batch = iter_test_pos.get_next()
 
     logits_tr = forward(X_train_char_batch, X_train_bigram_batch,X_train_pos_batch,False, True, params)
     logits_te = forward(X_test_char_batch, X_test_bigram_batch,X_test_pos_batch, True, False, params)
     
-    log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(logits_tr, y_train_batch, tf.count_nonzero(X_train_char_batch, 1))
-    with tf.variable_scope(tf.get_variable_scope(), reuse=True):
-        log_likelihood_, _ = tf.contrib.crf.crf_log_likelihood(logits_te, y_test_batch, tf.count_nonzero(X_test_char_batch, 1))
-    
+    log_likelihood, trans_params = tf.contrib.crf.crf_log_likelihood(
+        logits_tr, y_train_batch, tf.count_nonzero(X_train_char_batch, 1))
+
     ops['global_step'] = tf.Variable(0, trainable=False)
     
     #decay_steps = 100
@@ -206,15 +190,10 @@ if __name__ == '__main__':
     with tf.name_scope('lr'):
         ops['lr'] = tf.train.exponential_decay(params['lr']['start'], ops['global_step'], decay_steps,decay_rate, staircase=False)
         tf.summary.scalar('lr', ops['lr'])
-    
 
     with tf.name_scope('train_loss'):
         ops['train_loss'] = tf.reduce_mean(-log_likelihood)
         tf.summary.scalar('train_loss', ops['train_loss'])
-    
-    with tf.name_scope('val_loss'):
-        ops['val_loss'] = tf.reduce_mean(-log_likelihood_)
-        tf.summary.scalar('val_loss', ops['val_loss'])
     
     ops['train'] = tf.train.AdamOptimizer(ops['lr']).apply_gradients(
         clip_grads(ops['train_loss'], params), global_step=ops['global_step'])
@@ -230,16 +209,15 @@ if __name__ == '__main__':
     for epoch in range(1, params['n_epoch']+1):
         while True:
             try:
-                _, step, train_loss, val_loss, lr = sess.run([ops['train'],
+                _, step, train_loss, lr = sess.run([ops['train'],
                                               ops['global_step'],
                                               ops['train_loss'],
-                                              ops['val_loss'],
                                               ops['lr']])
             except tf.errors.OutOfRangeError:
                 break
             else:
                 if step % params['display_step'] == 0 or step == 1:
-                    print("Epoch %d | Step %d | Train_Loss %.3f | Val_loss: %.3f | LR: %.4f" % (epoch, step, train_loss, val_loss, lr))
+                    print("Epoch %d | Step %d | Train_Loss %.3f | LR: %.4f" % (epoch, step, train_loss, lr))
                     
                     # Store train log
                     writer.add_summary(sess.run(merge), step)
@@ -247,14 +225,14 @@ if __name__ == '__main__':
                     save_path =  saver.save(sess, 'models/model.ckpt', step)
                     #print(save_path)
         
-        #Y_pred = []
-        #while True:
-        #    try:
-        #        Y_pred.append(sess.run(ops['crf_decode']))
-        #    except tf.errors.OutOfRangeError:
-        #        break
-        #Y_pred = np.concatenate(Y_pred)
-        #eval(Y_test, Y_pred)
+        Y_pred = []
+        while True:
+            try:
+                Y_pred.append(sess.run(ops['crf_decode']))
+            except tf.errors.OutOfRangeError:
+                break
+        Y_pred = np.concatenate(Y_pred)
+        eval(Y_test, Y_pred)
         if epoch != params['n_epoch']:
             sess.run(iter_train_char.initializer, init_dict_train_char)
             sess.run(iter_train_pos.initializer, init_dict_train_pos)
