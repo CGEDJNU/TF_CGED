@@ -3,10 +3,11 @@ import numpy as np
 import tensorflow as tf
 from sklearn.metrics import classification_report
 import word2vec
+
 import os
-#os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3'
-#os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+
+
 
 config = tf.ConfigProto(allow_soft_placement=True)
 config.gpu_options.allow_growth = True
@@ -103,9 +104,9 @@ if __name__ == '__main__':
         'batch_size': 128,
         'n_class': 9,
         'hidden_dim': 128,
-        'clip_norm': 5.0,
+        'clip_norm': 2.0,
         'lr': {'start': 1e-1, 'end': 0.9e-1},
-        'n_epoch': 10,
+        'n_epoch': 80,
         'display_step': 10,
     }
     word_to_ix_path = 'data/input/word_to_ix.pkl'
@@ -222,9 +223,9 @@ if __name__ == '__main__':
                     print("Epoch %d | Step %d | Train_Loss %.3f | LR: %.4f" % (epoch, step, train_loss, lr))
                     
                     # Store train log
-                    writer.add_summary(sess.run(merge), step)
+                    #writer.add_summary(sess.run(merge), step)
 
-                    save_path =  saver.save(sess, 'models/model.ckpt', step)
+                    #save_path =  saver.save(sess, 'models/model.ckpt', step)
                     #print(save_path)
         
         Y_pred = []
